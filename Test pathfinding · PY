@@ -1,0 +1,85 @@
+"""
+Unit tests for the pathfinding algorithms in pathfinder.py.
+
+These tests exercise Grid, Node, astar(), and greedy_bfs() directly —
+no Pygame window is created, so they run headlessly in CI.
+
+NOTE: This assumes the source file has been renamed from
+`dynamicpathfinder .py` (with a space) to `pathfinder.py`, since a
+filename containing a space cannot be imported as a Python module.
+"""
+import pygame
+import pytest
+
+# pygame.font/display aren't touched by the algorithm functions we test,
+# but importing the module does run `import pygame` and define module-level
+# constants, so we init in headless/dummy mode to keep CI environments happy.
+import os
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+pygame.init()
+
+from pathfinder import Grid, astar, greedy_bfs, manhattan, euclidean  # noqa: E402
+
+
+def make_empty_grid(rows=5, cols=5):
+    grid = Grid(rows, cols)
+    grid.clear_walls()
+    return grid
+
+
+def test_manhattan_distance():
+    grid = make_empty_grid()
+    start = grid.node(0, 0)
+    goal = grid.node(3, 4)
+    assert manhattan(start, goal) == 7
+
+
+def test_euclidean_distance():
+    grid = make_empty_grid()
+    start = grid.node(0, 0)
+    goal = grid.node(3, 4)
+    assert euclidean(start, goal) == pytest.approx(5.0)
+
+
+def test_astar_finds_path_on_open_grid():
+    grid = make_empty_grid(5, 5)
+    path, visited, frames = astar(grid, manhattan)
+    assert len(path) > 0
+    assert path[0] is grid.start_node()
+    assert path[-1] is grid.goal_node()
+    # Manhattan-optimal path length on an open 5x5 grid from corner to corner
+    assert len(path) - 1 == 8  # path cost (edges), not node count
+
+
+def test_greedy_bfs_finds_a_path_on_open_grid():
+    grid = make_empty_grid(5, 5)
+    path, visited, frames = greedy_bfs(grid, manhattan)
+    assert len(path) > 0
+    assert path[0] is grid.start_node()
+    assert path[-1] is grid.goal_node()
+
+
+def test_astar_returns_empty_path_when_goal_is_walled_off():
+    grid = make_empty_grid(5, 5)
+    # Seal off the goal completely
+    goal_r, goal_c = grid.goal_pos
+    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        n = grid.node(goal_r + dr, goal_c + dc)
+        if n is not None:
+            n.is_wall = True
+
+    path, visited, frames = astar(grid, manhattan)
+    assert path == []
+
+
+def test_astar_and_greedy_bfs_agree_on_trivial_grid():
+    """When start == goal, both algorithms should return a single-node path."""
+    grid = make_empty_grid(3, 3)
+    grid.goal_pos = grid.start_pos
+
+    astar_path, _, _ = astar(grid, manhattan)
+    gbfs_path, _, _ = greedy_bfs(grid, manhattan)
+
+    assert len(astar_path) == 1
+    assert len(gbfs_path) == 1
+    assert astar_path[0] is grid.start_node()
